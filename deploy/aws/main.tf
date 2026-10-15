@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.10.0"
 
   required_providers {
     aws = {
@@ -148,9 +148,6 @@ resource "aws_security_group" "api_gateway_link" {
   description = "Security group for API Gateway private-link interfaces."
   vpc_id      = aws_vpc.api.id
 
-  ingress = []
-  egress  = []
-
   tags = {
     Project   = var.project_name
     ManagedBy = "Terraform"
@@ -161,9 +158,6 @@ resource "aws_security_group" "load_balancer" {
   name        = "${var.project_name}-alb"
   description = "Allow API traffic only from the API Gateway VPC link."
   vpc_id      = aws_vpc.api.id
-
-  ingress = []
-  egress  = []
 
   tags = {
     Project   = var.project_name
@@ -176,9 +170,6 @@ resource "aws_security_group" "container_instance" {
   description = "Allow API traffic from the ALB and HTTPS only to private endpoints."
   vpc_id      = aws_vpc.api.id
 
-  ingress = []
-  egress  = []
-
   tags = {
     Project   = var.project_name
     ManagedBy = "Terraform"
@@ -189,9 +180,6 @@ resource "aws_security_group" "vpc_endpoints" {
   name        = "${var.project_name}-endpoints"
   description = "Allow private AWS service endpoint traffic from ECS instances."
   vpc_id      = aws_vpc.api.id
-
-  ingress = []
-  egress  = []
 
   tags = {
     Project   = var.project_name
@@ -400,17 +388,14 @@ resource "aws_api_gateway_integration" "proxy" {
   http_method             = aws_api_gateway_method.proxy.http_method
   integration_http_method = "ANY"
   type                    = "HTTP_PROXY"
-  uri                     = "http://${aws_lb.api.dns_name}"
+  uri                     = "http://${aws_lb.api.dns_name}/{proxy}"
   connection_type         = "VPC_LINK"
   connection_id           = aws_apigatewayv2_vpc_link.api.id
   integration_target      = aws_lb.api.arn
   passthrough_behavior    = "WHEN_NO_MATCH"
 
-  request_templates = {
-    "application/json" = <<-TEMPLATE
-      #set($context.requestOverride.path = "/$input.params('proxy')")
-      $input.body
-    TEMPLATE
+  request_parameters = {
+    "integration.request.path.proxy" = "method.request.path.proxy"
   }
 }
 
@@ -432,13 +417,6 @@ resource "aws_api_gateway_integration" "root" {
   connection_id           = aws_apigatewayv2_vpc_link.api.id
   integration_target      = aws_lb.api.arn
   passthrough_behavior    = "WHEN_NO_MATCH"
-
-  request_templates = {
-    "application/json" = <<-TEMPLATE
-      #set($context.requestOverride.path = "/")
-      $input.body
-    TEMPLATE
-  }
 }
 
 resource "aws_api_gateway_deployment" "api" {
@@ -446,17 +424,16 @@ resource "aws_api_gateway_deployment" "api" {
 
   triggers = {
     redeployment = sha1(jsonencode({
-      proxy_resource    = aws_api_gateway_resource.proxy.id
-      proxy_method      = aws_api_gateway_method.proxy.http_method
-      proxy_uri         = aws_api_gateway_integration.proxy.uri
-      proxy_vpc_link    = aws_api_gateway_integration.proxy.connection_id
-      proxy_target      = aws_api_gateway_integration.proxy.integration_target
-      proxy_templates   = aws_api_gateway_integration.proxy.request_templates
-      root_method       = aws_api_gateway_method.root.http_method
-      root_uri          = aws_api_gateway_integration.root.uri
-      root_vpc_link     = aws_api_gateway_integration.root.connection_id
-      root_target       = aws_api_gateway_integration.root.integration_target
-      root_templates    = aws_api_gateway_integration.root.request_templates
+      proxy_resource   = aws_api_gateway_resource.proxy.id
+      proxy_method     = aws_api_gateway_method.proxy.http_method
+      proxy_uri        = aws_api_gateway_integration.proxy.uri
+      proxy_vpc_link   = aws_api_gateway_integration.proxy.connection_id
+      proxy_target     = aws_api_gateway_integration.proxy.integration_target
+      proxy_parameters = aws_api_gateway_integration.proxy.request_parameters
+      root_method      = aws_api_gateway_method.root.http_method
+      root_uri         = aws_api_gateway_integration.root.uri
+      root_vpc_link    = aws_api_gateway_integration.root.connection_id
+      root_target      = aws_api_gateway_integration.root.integration_target
     }))
   }
 
@@ -539,7 +516,7 @@ resource "aws_ecs_cluster" "api" {
 }
 
 resource "aws_iam_role" "container_instance" {
-  name = "${var.project_name}-instance-role"
+  name                 = "${var.project_name}-instance-role"
   permissions_boundary = aws_iam_policy.ecs_runtime_boundary.arn
 
   assume_role_policy = jsonencode({
@@ -575,7 +552,7 @@ resource "aws_iam_instance_profile" "container_instance" {
 }
 
 resource "aws_iam_role" "task_execution" {
-  name = "${var.project_name}-task-execution-role"
+  name                 = "${var.project_name}-task-execution-role"
   permissions_boundary = aws_iam_policy.ecs_runtime_boundary.arn
 
   assume_role_policy = jsonencode({
@@ -636,7 +613,7 @@ resource "aws_launch_template" "container_instance" {
     device_name = "/dev/xvda"
 
     ebs {
-      volume_size           = 16
+      volume_size           = 30
       volume_type           = "gp3"
       encrypted             = true
       delete_on_termination = true
@@ -673,6 +650,9 @@ resource "aws_autoscaling_group" "container_instance" {
 
   depends_on = [
     aws_route_table_association.application,
+    aws_vpc_security_group_egress_rule.instances_to_endpoints,
+    aws_vpc_security_group_egress_rule.instances_to_s3,
+    aws_vpc_security_group_ingress_rule.endpoints_from_instances,
     aws_vpc_endpoint.interface,
     aws_vpc_endpoint.s3,
     aws_iam_role_policy_attachment.container_instance,

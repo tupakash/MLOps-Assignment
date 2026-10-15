@@ -30,6 +30,9 @@ This is an academic machine-learning project, not a medical diagnostic tool.
 - **CI validation:** GitHub Actions installs dependencies, runs Ruff and the
   test suite, executes model selection, then builds the Docker image and
   smoke-tests the API. Training outputs are uploaded as workflow artifacts.
+- **AWS delivery:** After the `MLOps CI` workflow succeeds on `main`, a
+  separate GitHub Actions workflow assumes a branch-scoped AWS role with OIDC,
+  pushes the serving image to ECR, applies Terraform, and smoke-tests the API.
 - **AWS infrastructure and monitoring:** Terraform describes a public API
   Gateway protected by AWS WAF, connected through a VPC Link to an internal
   load balancer and private ECS-on-EC2 service. CloudWatch collects structured
@@ -67,7 +70,9 @@ curl -X POST http://localhost:8000/predict \
 | `src/` | Dataset loading, feature engineering, model training, ONNX conversion, and API |
 | `tests/` | API and model-pipeline tests |
 | `.github/workflows/ci.yml` | Lint, test, train, container build, and API smoke test |
+| `.github/workflows/deploy-aws.yml` | OIDC-authenticated AWS deployment and teardown |
 | `deploy/aws/` | Terraform infrastructure, deployment script, and Grafana configuration |
+| `deploy/aws/bootstrap/` | Separately managed GitHub OIDC provider and deployment role |
 | `requirements.txt` | Training, notebook, tracking, and development dependencies |
 | `requirements-serving.txt` | Minimal API runtime dependencies |
 
@@ -110,12 +115,19 @@ WAF, then a VPC Link, an internal Application Load Balancer, and ECS running
 on a private EC2 instance. The private VPC uses service endpoints for ECS,
 ECR, CloudWatch Logs, and S3 rather than a NAT or internet gateway.
 
-`deploy/aws/deploy.ps1` builds a Linux AMD64 container image, pushes it to ECR,
-applies the Terraform configuration, and checks the deployed API. It requires
-AWS CLI v2, Terraform, Docker Desktop, suitable AWS permissions, and a
-generated ONNX model. The Terraform configuration also defines a branch-scoped
-GitHub Actions OIDC deployment role; the current CI workflow validates and
-smoke-tests the container but does not deploy to AWS.
+`deploy/aws/backend.tf` configures the application stack's encrypted S3 backend
+with native S3 lockfiles. `deploy/aws/bootstrap/` manages the GitHub OIDC
+provider and deployment role in a separate state key, so application teardown
+cannot remove the credentials needed for later deployments. The versioned S3
+bucket is bootstrapped once before Terraform initialization; the OIDC role can
+access only the application's state object and lockfile. The local deployment
+script `deploy/aws/deploy.ps1` remains available for workstation deployments.
+
+The `AWS deployment` workflow runs after successful CI on `main`, or can be
+started manually from the Actions tab. Its `destroy` operation removes the
+application resources while retaining the separate bootstrap role and shared
+state bucket so a later workflow can deploy again. The state bucket and its
+versions should be retained to preserve recovery history.
 
 The Grafana dashboard in `deploy/aws/` queries the CloudWatch API log group for
 request volume, HTTP errors, p95 latency, and recent request events. AWS
