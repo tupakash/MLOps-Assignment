@@ -597,11 +597,11 @@ resource "aws_launch_template" "container_instance" {
   }
 
   vpc_security_group_ids = [aws_security_group.container_instance.id]
-  user_data = base64encode(<<-USER_DATA
-    #!/bin/bash
-    echo "ECS_CLUSTER=${aws_ecs_cluster.api.name}" >> /etc/ecs/ecs.config
-  USER_DATA
-  )
+  user_data = base64encode(join("\n", [
+    "#!/bin/bash",
+    "echo \"ECS_CLUSTER=${aws_ecs_cluster.api.name}\" >> /etc/ecs/ecs.config",
+    "",
+  ]))
 
   metadata_options {
     http_endpoint               = "enabled"
