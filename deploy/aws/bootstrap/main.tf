@@ -321,6 +321,17 @@ resource "aws_iam_policy" "github_actions_deploy_services" {
         Resource = [
           "arn:aws:apigateway:${var.aws_region}::/restapis",
           "arn:aws:apigateway:${var.aws_region}::/restapis/*",
+          "arn:aws:apigateway:${var.aws_region}::/vpclinks",
+          "arn:aws:apigateway:${var.aws_region}::/vpclinks/*",
+        ]
+      },
+      {
+        Sid    = "TagProjectApiGatewayResources"
+        Effect = "Allow"
+        Action = ["apigateway:DELETE", "apigateway:PUT"]
+        Resource = [
+          "arn:aws:apigateway:${var.aws_region}::/tags/arn%3Aaws%3Aapigateway%3A${var.aws_region}%3A%3A%2Frestapis%2F*",
+          "arn:aws:apigateway:${var.aws_region}::/tags/arn%3Aaws%3Aapigateway%3A${var.aws_region}%3A%3A%2Fvpclinks%2F*",
         ]
       },
       {
@@ -340,13 +351,23 @@ resource "aws_iam_policy" "github_actions_deploy_services" {
         Action = [
           "logs:CreateLogGroup",
           "logs:DeleteLogGroup",
-          "logs:DescribeLogGroups",
           "logs:ListTagsForResource",
           "logs:PutRetentionPolicy",
           "logs:TagResource",
           "logs:UntagResource",
         ]
         Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.project_name}*"
+      },
+      {
+        Sid      = "ListProjectLogGroups"
+        Effect   = "Allow"
+        Action   = ["logs:DescribeLogGroups"]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestedRegion" = var.aws_region
+          }
+        }
       },
       {
         Sid    = "ReadEcsOptimizedAmiParameter"
