@@ -44,6 +44,28 @@ variable "github_repository" {
   }
 }
 
+variable "github_repository_owner_id" {
+  description = "Immutable GitHub owner ID included in the OIDC subject claim."
+  type        = string
+  default     = "190912519"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_owner_id))
+    error_message = "github_repository_owner_id must be a numeric GitHub ID."
+  }
+}
+
+variable "github_repository_id" {
+  description = "Immutable GitHub repository ID included in the OIDC subject claim."
+  type        = string
+  default     = "1420296006"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "github_repository_id must be a numeric GitHub ID."
+  }
+}
+
 variable "github_deploy_branch" {
   description = "Branch whose GitHub Actions workflows may deploy the AWS stack."
   type        = string
@@ -64,7 +86,10 @@ variable "terraform_state_bucket" {
 data "aws_caller_identity" "current" {}
 
 locals {
-  ecs_runtime_boundary_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${var.project_name}-ecs-runtime-boundary"
+  ecs_runtime_boundary_arn  = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${var.project_name}-ecs-runtime-boundary"
+  github_repository_owner   = split("/", var.github_repository)[0]
+  github_repository_name    = split("/", var.github_repository)[1]
+  github_repository_subject = "${local.github_repository_owner}@${var.github_repository_owner_id}/${local.github_repository_name}@${var.github_repository_id}"
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
@@ -93,7 +118,7 @@ resource "aws_iam_role" "github_actions_deploy" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:ref:refs/heads/${var.github_deploy_branch}"
+          "token.actions.githubusercontent.com:sub" = "repo:${local.github_repository_subject}:ref:refs/heads/${var.github_deploy_branch}"
         }
       }
     }]
