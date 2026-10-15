@@ -1,0 +1,71 @@
+name: MLOps CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-and-train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint source and tests
+        run: ruff check src tests
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Train and log model candidates
+        env:
+          MLFLOW_TRACKING_URI: sqlite:///notebooks/mlflow.db
+        run: python -m src.pipeline 2>&1 | tee training.log
+
+      - name: Build and smoke-test serving container
+        run: |
+          set -euo pipefail
+          docker build -t heart-disease-api:${GITHUB_SHA} .
+          container_id=$(docker run -d -p 8000:8000 heart-disease-api:${GITHUB_SHA})
+          cleanup() {
+            docker logs "$container_id" || true
+            docker rm -f "$container_id" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://localhost:8000/health; then
+              break
+            fi
+            sleep 2
+          done
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            -d '{"age":52,"sex":1,"cp":0,"trestbps":125,"chol":212,"fbs":0,"restecg":1,"thalach":168,"exang":0,"oldpeak":1.0,"slope":2,"ca":2,"thal":3}' \
+            http://localhost:8000/predict > prediction.json
+          python -c "import json; response=json.load(open('prediction.json')); assert {'prediction', 'label', 'confidence', 'disease_probability'} <= response.keys(); assert 0 <= response['confidence'] <= 1; print(response)"
+
+      - name: Upload training outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ml-training-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          path: |
+            training.log
+            notebooks/mlflow.db
+            notebooks/mlruns/
+            artifacts/heart_disease_model.onnx
+            prediction.json

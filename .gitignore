@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.ipynb_checkpoints/
+mlruns/
+artifacts/
+.env
+.DS_Store
+.pytest_cache/
+mlflow.db
+mlflow.db-*
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+MLOps Assignment 1 Instructions.pdf
