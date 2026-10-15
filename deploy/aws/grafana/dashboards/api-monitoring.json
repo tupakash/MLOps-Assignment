@@ -1,0 +1,239 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "expression": "fields @timestamp, event\n| filter event = \"api_request\"\n| stats count(*) as requests by bin(1m)",
+          "id": "",
+          "logGroups": [
+            {
+              "name": "/ecs/heart-disease-api"
+            }
+          ],
+          "queryMode": "Logs",
+          "refId": "A",
+          "region": "default"
+        }
+      ],
+      "title": "API requests per minute",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "expression": "fields @timestamp, event, status_code\n| filter event = \"api_request\" and status_code >= 400\n| stats count(*) as errors by bin(1m), status_code",
+          "id": "",
+          "logGroups": [
+            {
+              "name": "/ecs/heart-disease-api"
+            }
+          ],
+          "queryMode": "Logs",
+          "refId": "A",
+          "region": "default"
+        }
+      ],
+      "title": "HTTP errors per minute",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "expression": "fields @timestamp, event, duration_ms\n| filter event = \"api_request\"\n| stats pct(duration_ms, 95) as p95_ms by bin(1m)",
+          "id": "",
+          "logGroups": [
+            {
+              "name": "/ecs/heart-disease-api"
+            }
+          ],
+          "queryMode": "Logs",
+          "refId": "A",
+          "region": "default"
+        }
+      ],
+      "title": "P95 API latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 4,
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "expression": "fields @timestamp, method, path, status_code, duration_ms\n| filter event = \"api_request\"\n| sort @timestamp desc\n| limit 100",
+          "id": "",
+          "logGroups": [
+            {
+              "name": "/ecs/heart-disease-api"
+            }
+          ],
+          "queryMode": "Logs",
+          "refId": "A",
+          "region": "default"
+        }
+      ],
+      "title": "Recent API requests",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "aws",
+    "cloudwatch",
+    "api"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Heart Disease API - CloudWatch Monitoring",
+  "uid": "heart-disease-api-cloudwatch",
+  "version": 1
+}

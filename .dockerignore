@@ -1,0 +1,15 @@
+.git
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.github
+notebooks
+tests
+mlruns
+mlflow.db
+mlflow.db-*
+data
+artifacts/*
+!artifacts/heart_disease_model.onnx
