@@ -1,16 +1,13 @@
 param(
     [string]$Region = "ap-south-1",
     [string]$ProjectName = "heart-disease-api",
-    [Parameter(Mandatory = $true)]
-    [string]$GitHubRepository,
-    [string]$GitHubBranch = "main",
     [string]$ImageTag = "",
     [ValidateSet("t3.micro", "t3.small")]
     [string]$InstanceType = "t3.micro"
 )
 
 $ErrorActionPreference = "Stop"
-$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
+$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 
 function Invoke-AwsCli {
     param([string[]]$Arguments)
@@ -58,11 +55,9 @@ try {
         -auto-approve `
         "-var=aws_region=$Region" `
         "-var=project_name=$ProjectName" `
-        "-var=github_repository=$GitHubRepository" `
-        "-var=github_deploy_branch=$GitHubBranch" `
         "-var=instance_type=$InstanceType" `
         "-var=image_tag=$ImageTag" `
-        -target=aws_ecr_repository.api
+        "-target=aws_ecr_repository.api"
     if ($LASTEXITCODE -ne 0) {
         throw "Terraform could not provision the ECR repository."
     }
@@ -96,8 +91,50 @@ try {
         -auto-approve `
         "-var=aws_region=$Region" `
         "-var=project_name=$ProjectName" `
-        "-var=github_repository=$GitHubRepository" `
-        "-var=github_deploy_branch=$GitHubBranch" `
+        "-var=instance_type=$InstanceType" `
+        "-var=image_tag=$ImageTag" `
+        "-target=aws_autoscaling_group.container_instance"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Terraform could not provision the ECS cluster capacity."
+    }
+
+    $containerInstanceArn = ""
+    $agentConnected = ""
+    for ($attempt = 1; $attempt -le 30; $attempt++) {
+        $containerInstanceArn = (
+            Invoke-AwsCli -Arguments @(
+                "ecs", "list-container-instances",
+                "--cluster", $ProjectName,
+                "--region", $Region,
+                "--query", "containerInstanceArns[0]",
+                "--output", "text"
+            )
+        ).Trim()
+
+        if (-not [string]::IsNullOrWhiteSpace($containerInstanceArn) -and $containerInstanceArn -ne "None") {
+            $agentConnected = Invoke-AwsCli -Arguments @(
+                "ecs", "describe-container-instances",
+                "--cluster", $ProjectName,
+                "--container-instances", $containerInstanceArn,
+                "--region", $Region,
+                "--query", "containerInstances[0].agentConnected",
+                "--output", "text"
+            )
+            if ($agentConnected.Trim() -eq "True") {
+                break
+            }
+        }
+
+        Start-Sleep -Seconds 10
+    }
+    if ([string]::IsNullOrWhiteSpace($containerInstanceArn) -or $containerInstanceArn -eq "None" -or $agentConnected.Trim() -ne "True") {
+        throw "No connected ECS container instance registered in cluster '$ProjectName' after 5 minutes."
+    }
+
+    & terraform apply `
+        -auto-approve `
+        "-var=aws_region=$Region" `
+        "-var=project_name=$ProjectName" `
         "-var=instance_type=$InstanceType" `
         "-var=image_tag=$ImageTag"
     if ($LASTEXITCODE -ne 0) {
@@ -109,17 +146,12 @@ try {
         throw "Terraform did not return the API URL."
     }
 
-    $githubActionsRoleArn = (& terraform output -raw github_actions_role_arn).Trim()
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($githubActionsRoleArn)) {
-        throw "Terraform did not return the GitHub Actions deployment role ARN."
-    }
 }
 finally {
     Pop-Location
 }
 
 Write-Output "API URL: $apiUrl"
-Write-Output "GitHub Actions role ARN: $githubActionsRoleArn"
 $healthUrl = "$apiUrl/health"
 $ready = $false
 for ($attempt = 1; $attempt -le 30; $attempt++) {

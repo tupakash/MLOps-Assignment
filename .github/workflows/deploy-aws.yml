@@ -1,0 +1,167 @@
+name: AWS deployment
+
+on:
+  workflow_run:
+    workflows: ["MLOps CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Deploy or destroy the application stack (the OIDC role and state bucket are retained)
+        required: true
+        type: choice
+        options:
+          - deploy
+          - destroy
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aws-heart-disease-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      (github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ap-south-1
+      AWS_DEPLOY_ROLE_ARN: arn:aws:iam::543035741305:role/heart-disease-api-github-actions-deploy
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_aws_region: ap-south-1
+      TF_VAR_project_name: heart-disease-api
+      TF_VAR_instance_type: t3.micro
+      IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
+      OPERATION: ${{ inputs.operation || 'deploy' }}
+    steps:
+      - name: Check out the CI-tested revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Configure Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.5
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-actions-${{ github.run_id }}
+
+      - name: Initialize shared Terraform state
+        working-directory: deploy/aws
+        run: terraform init -input=false
+
+      - name: Destroy application infrastructure
+        if: env.OPERATION == 'destroy'
+        working-directory: deploy/aws
+        run: terraform destroy -input=false -auto-approve -var="image_tag=${IMAGE_TAG}"
+
+      - name: Set up Python for model export
+        if: env.OPERATION == 'deploy'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Train and export the serving model
+        if: env.OPERATION == 'deploy'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m src.pipeline
+
+      - name: Provision ECR repository
+        if: env.OPERATION == 'deploy'
+        working-directory: deploy/aws
+        run: |
+          terraform apply -input=false -auto-approve \
+            -target=aws_ecr_repository.api \
+            -var="image_tag=${IMAGE_TAG}"
+
+      - name: Build and push the serving image
+        if: env.OPERATION == 'deploy'
+        env:
+          AWS_ACCOUNT_ID: "543035741305"
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" |
+            docker login --username AWS --password-stdin \
+              "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          image_uri="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/heart-disease-api:${IMAGE_TAG}"
+          docker build --platform linux/amd64 --tag "$image_uri" .
+          docker push "$image_uri"
+
+      - name: Provision ECS capacity
+        if: env.OPERATION == 'deploy'
+        working-directory: deploy/aws
+        run: |
+          terraform apply -input=false -auto-approve \
+            -target=aws_autoscaling_group.container_instance \
+            -var="image_tag=${IMAGE_TAG}"
+
+      - name: Wait for a connected ECS container instance
+        if: env.OPERATION == 'deploy'
+        run: |
+          for attempt in {1..30}; do
+            container_instance=$(aws ecs list-container-instances \
+              --cluster heart-disease-api \
+              --query 'containerInstanceArns[0]' \
+              --output text)
+            if [[ -n "$container_instance" && "$container_instance" != "None" ]]; then
+              connected=$(aws ecs describe-container-instances \
+                --cluster heart-disease-api \
+                --container-instances "$container_instance" \
+                --query 'containerInstances[0].agentConnected' \
+                --output text)
+              if [[ "$connected" == "True" ]]; then
+                echo "ECS container instance is connected: $container_instance"
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo "::error::No connected ECS container instance registered within five minutes."
+          exit 1
+
+      - name: Apply the application infrastructure
+        if: env.OPERATION == 'deploy'
+        working-directory: deploy/aws
+        run: terraform apply -input=false -auto-approve -var="image_tag=${IMAGE_TAG}"
+
+      - name: Smoke-test the deployed API
+        if: env.OPERATION == 'deploy'
+        working-directory: deploy/aws
+        run: |
+          health_url=$(terraform output -raw health_url)
+          predict_url=$(terraform output -raw predict_url)
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error "$health_url" |
+              python -c 'import json,sys; assert json.load(sys.stdin)["status"] == "ok"'; then
+              break
+            fi
+            if [[ "$attempt" == 30 ]]; then
+              echo "::error::The deployed API did not become healthy."
+              exit 1
+            fi
+            sleep 10
+          done
+
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            -d '{"age":52,"sex":1,"cp":0,"trestbps":125,"chol":212,"fbs":0,"restecg":1,"thalach":168,"exang":0,"oldpeak":1.0,"slope":2,"ca":2,"thal":3}' \
+            "$predict_url" |
+            python -c 'import json,sys; r=json.load(sys.stdin); assert {"prediction","label","confidence","disease_probability"} <= r.keys(); assert 0 <= r["confidence"] <= 1; print(r)'
