@@ -200,6 +200,7 @@ resource "aws_iam_policy" "github_actions_deploy" {
           "ec2:ModifyVpcEndpoint",
           "ec2:RevokeSecurityGroupEgress",
           "ec2:RevokeSecurityGroupIngress",
+          "ec2:RunInstances",
         ]
         Resource = "*"
         Condition = {
