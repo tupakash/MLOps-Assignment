@@ -352,6 +352,7 @@ resource "aws_iam_policy" "github_actions_deploy_services" {
           "grafana:UpdatePermissions",
           "grafana:CreateWorkspaceApiKey",
           "grafana:DeleteWorkspaceApiKey",
+          "grafana:DescribeWorkspaceConfiguration",
         ]
         Resource = "*"
         Condition = {
