@@ -372,6 +372,17 @@ resource "aws_iam_policy" "github_actions_deploy_services" {
         }
       },
       {
+        Sid      = "CreateGrafanaIdentityCenterApplication"
+        Effect   = "Allow"
+        Action   = ["sso:CreateManagedApplicationInstance"]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestedRegion" = var.grafana_region
+          }
+        }
+      },
+      {
         Sid    = "ManageApiGateway"
         Effect = "Allow"
         Action = ["apigateway:*"]
