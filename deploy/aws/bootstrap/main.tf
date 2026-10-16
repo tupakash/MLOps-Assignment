@@ -373,6 +373,21 @@ resource "aws_iam_policy" "github_actions_deploy_services" {
         }
       },
       {
+        Sid    = "ReadGrafanaIdentityCenterAssignments"
+        Effect = "Allow"
+        Action = [
+          "sso:GetSharedSsoConfiguration",
+          "sso:ListDirectoryAssociations",
+          "sso:GetManagedApplicationInstance",
+          "sso:ListProfiles",
+          "sso:GetProfile",
+          "sso:ListProfileAssociations",
+          "sso-directory:DescribeUser",
+          "sso-directory:DescribeGroup",
+        ]
+        Resource = "*"
+      },
+      {
         Sid      = "CreateGrafanaIdentityCenterApplication"
         Effect   = "Allow"
         Action   = ["sso:CreateManagedApplicationInstance"]
