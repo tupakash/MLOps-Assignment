@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-workspace_id="${1:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT REGION PROJECT_NAME}"
-workspace_endpoint="${2:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT REGION PROJECT_NAME}"
-region="${3:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT REGION PROJECT_NAME}"
-project_name="${4:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT REGION PROJECT_NAME}"
+workspace_id="${1:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME}"
+workspace_endpoint="${2:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME}"
+grafana_region="${3:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME}"
+cloudwatch_region="${4:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME}"
+project_name="${5:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME}"
 
 dashboard_file="grafana/dashboards/api-monitoring.json"
 base_url="${workspace_endpoint%/}"
@@ -19,6 +20,7 @@ cleanup() {
         if ! aws grafana delete-workspace-api-key \
             --workspace-id "$workspace_id" \
             --key-name "$key_name" \
+            --region "$grafana_region" \
             >/dev/null; then
             echo "::error::Failed to delete temporary Grafana API key '$key_name'."
             if [[ "$exit_code" == "0" ]]; then
@@ -49,6 +51,7 @@ api_key="$(aws grafana create-workspace-api-key \
     --key-name "$key_name" \
     --key-role ADMIN \
     --seconds-to-live 900 \
+    --region "$grafana_region" \
     --query key \
     --output text)"
 if [[ -z "$api_key" || "$api_key" == "None" ]]; then
@@ -57,7 +60,7 @@ if [[ -z "$api_key" || "$api_key" == "None" ]]; then
 fi
 
 datasource_payload="$(jq -n \
-    --arg region "$region" \
+    --arg region "$cloudwatch_region" \
     '{
       name: "CloudWatch",
       uid: "cloudwatch",
@@ -103,12 +106,12 @@ health_status="$(curl --silent --show-error \
     "$base_url/api/datasources/uid/cloudwatch/health")"
 if [[ "$health_status" != "200" ]] || ! grep -q '"status"[[:space:]]*:[[:space:]]*"OK"' "$response_file"; then
     cat "$response_file"
-    echo "::error::CloudWatch data source health check failed for AWS region $region."
+    echo "::error::CloudWatch data source health check failed for AWS region $cloudwatch_region."
     exit 1
 fi
 
 query_payload="$(jq -n \
-    --arg region "$region" \
+    --arg region "$cloudwatch_region" \
     --arg log_group "/ecs/${project_name}" \
     '{
       from: "now-15m",
@@ -134,7 +137,7 @@ query_status="$(curl --silent --show-error \
     "$base_url/api/ds/query")"
 if [[ "$query_status" != "200" ]] || ! jq -e '(.results.A? != null) and ((.results.A.error? // "") == "")' "$response_file" >/dev/null; then
     cat "$response_file"
-    echo "::error::CloudWatch Logs Insights query access failed for /ecs/${project_name} in $region."
+    echo "::error::CloudWatch Logs Insights query access failed for /ecs/${project_name} in $cloudwatch_region."
     exit 1
 fi
 

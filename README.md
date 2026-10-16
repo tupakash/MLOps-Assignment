@@ -116,6 +116,11 @@ HTTP errors, p95 request latency, and recent request events. It uses the
 workspace IAM role to read CloudWatch and does not require Prometheus for this
 log-based monitoring setup.
 
+AWS Managed Grafana is not available in `ap-south-1`; the workspace is therefore
+created in `ap-southeast-1` (Singapore), while the API and its CloudWatch log
+group remain in `ap-south-1` (Mumbai). Logs Insights queries run against the
+Mumbai log group from the Singapore-hosted dashboard.
+
 Before the first deployment with Managed Grafana, put the IAM Identity Center
 administrator user ID in the ignored
 `deploy/aws/bootstrap/terraform.tfvars` file as
