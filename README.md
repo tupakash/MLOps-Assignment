@@ -38,6 +38,9 @@ This is an academic machine-learning project, not a medical diagnostic tool.
   load balancer and private ECS-on-EC2 service. CloudWatch collects structured
   API request logs, and a provisioned Grafana dashboard visualizes request
   volume, errors, latency, and recent events.
+- **Local metrics monitoring:** The API exposes Prometheus request-count and
+  latency metrics at `/metrics`. A Docker Compose stack runs Prometheus and
+  Grafana and provisions an API dashboard automatically.
 
 ## Prediction API
 
@@ -71,7 +74,8 @@ curl -X POST http://localhost:8000/predict \
 | `tests/` | API and model-pipeline tests |
 | `.github/workflows/ci.yml` | Lint, test, train, container build, and API smoke test |
 | `.github/workflows/deploy-aws.yml` | OIDC-authenticated AWS deployment and teardown |
-| `deploy/aws/` | Terraform infrastructure, deployment script, and Grafana configuration |
+| `deploy/aws/` | Terraform infrastructure, deployment script, and CloudWatch Grafana configuration |
+| `deploy/monitoring/` | Prometheus scrape configuration and provisioned Grafana dashboard |
 | `deploy/aws/bootstrap/` | Separately managed GitHub OIDC provider and deployment role |
 | `requirements.txt` | Training, notebook, tracking, and development dependencies |
 | `requirements-serving.txt` | Minimal API runtime dependencies |
@@ -107,6 +111,16 @@ Once running, the API health endpoint is available at
 `http://localhost:8000/health`; the interactive API documentation is at
 `http://localhost:8000/docs`.
 
+## Prometheus and Grafana monitoring
+
+The API exposes request-count and latency metrics at `/metrics`. The
+`docker-compose.monitoring.yml` stack runs the API, Prometheus, and Grafana;
+Prometheus scrape configuration and the provisioned dashboard are in
+`deploy/monitoring/`. The dashboard presents API request rate, HTTP error rate,
+p95 latency, and API availability. Compose binds service ports to loopback by
+default. A separately provisioned AWS Grafana dashboard in `deploy/aws/`
+visualizes API request logs from CloudWatch.
+
 ## AWS deployment and monitoring
 
 The Terraform configuration in `deploy/aws/` provisions the deployment
@@ -130,6 +144,7 @@ state bucket so a later workflow can deploy again. The state bucket and its
 versions should be retained to preserve recovery history.
 
 The Grafana dashboard in `deploy/aws/` queries the CloudWatch API log group for
-request volume, HTTP errors, p95 latency, and recent request events. AWS
-infrastructure incurs charges while running; review and remove the deployed
-resources when they are no longer needed.
+request volume, HTTP errors, p95 latency, and recent request events. It is
+separate from the Prometheus-based Compose monitoring stack. AWS infrastructure
+incurs charges while running; review and remove the deployed resources when
+they are no longer needed.
