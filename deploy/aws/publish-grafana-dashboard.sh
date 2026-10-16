@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-workspace_id="${1:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME}"
-workspace_endpoint="${2:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME}"
-grafana_region="${3:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME}"
-cloudwatch_region="${4:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME}"
-project_name="${5:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME}"
+workspace_id="${1:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME LOG_GROUP_ARN}"
+workspace_endpoint="${2:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME LOG_GROUP_ARN}"
+grafana_region="${3:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME LOG_GROUP_ARN}"
+cloudwatch_region="${4:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME LOG_GROUP_ARN}"
+project_name="${5:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME LOG_GROUP_ARN}"
+log_group_arn="${6:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME LOG_GROUP_ARN}"
 
 dashboard_file="grafana/dashboards/api-monitoring.json"
 base_url="https://${workspace_endpoint%/}"
@@ -115,16 +116,19 @@ fi
 query_payload="$(jq -n \
     --arg region "$cloudwatch_region" \
     --arg log_group "/ecs/${project_name}" \
+    --arg log_group_arn "$log_group_arn" \
     '{
       from: "now-15m",
       to: "now",
       queries: [{
         datasource: {type: "cloudwatch", uid: "cloudwatch"},
         refId: "A",
+        id: "",
+        hide: false,
         queryMode: "Logs",
         region: $region,
         expression: "fields @timestamp | limit 1",
-        logGroups: [{name: $log_group}],
+        logGroups: [{name: $log_group, arn: $log_group_arn}],
         intervalMs: 1000,
         maxDataPoints: 100
       }]
@@ -146,8 +150,13 @@ fi
 dashboard_payload="$(jq -n \
     --slurpfile dashboard "$dashboard_file" \
     --arg message "Provisioned from ${GITHUB_SHA:-local} for ${project_name}" \
+    --arg log_group "/ecs/${project_name}" \
+    --arg log_group_arn "$log_group_arn" \
     '{
-      dashboard: $dashboard[0],
+      dashboard: (
+        $dashboard[0]
+        | .panels |= map(.targets |= map(.logGroups = [{name: $log_group, arn: $log_group_arn}]))
+      ),
       folderId: 0,
       overwrite: true,
       message: $message
