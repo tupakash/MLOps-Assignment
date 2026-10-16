@@ -83,6 +83,11 @@ variable "terraform_state_bucket" {
   default     = "mlops-assignment-terraform-state-543035741305"
 }
 
+variable "grafana_admin_user_ids" {
+  description = "IAM Identity Center user IDs to grant AWS Managed Grafana administrator access."
+  type        = list(string)
+}
+
 data "aws_caller_identity" "current" {}
 
 locals {
@@ -95,6 +100,17 @@ locals {
 resource "aws_iam_openid_connect_provider" "github" {
   url            = "https://token.actions.githubusercontent.com"
   client_id_list = ["sts.amazonaws.com"]
+
+  tags = {
+    Project   = var.project_name
+    ManagedBy = "Terraform"
+  }
+}
+
+resource "aws_ssm_parameter" "grafana_admin_user_ids" {
+  name  = "/${var.project_name}/grafana/admin-user-ids"
+  type  = "String"
+  value = jsonencode(var.grafana_admin_user_ids)
 
   tags = {
     Project   = var.project_name
@@ -315,6 +331,30 @@ resource "aws_iam_policy" "github_actions_deploy_services" {
         }
       },
       {
+        Sid    = "ManageProjectGrafanaWorkspace"
+        Effect = "Allow"
+        Action = [
+          "grafana:CreateWorkspace",
+          "grafana:DeleteWorkspace",
+          "grafana:DescribeWorkspace",
+          "grafana:ListWorkspaces",
+          "grafana:ListPermissions",
+          "grafana:ListTagsForResource",
+          "grafana:TagResource",
+          "grafana:UntagResource",
+          "grafana:UpdateWorkspace",
+          "grafana:UpdatePermissions",
+          "grafana:CreateWorkspaceApiKey",
+          "grafana:DeleteWorkspaceApiKey",
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestedRegion" = var.aws_region
+          }
+        }
+      },
+      {
         Sid    = "ManageApiGateway"
         Effect = "Allow"
         Action = ["apigateway:*"]
@@ -378,6 +418,12 @@ resource "aws_iam_policy" "github_actions_deploy_services" {
         ]
         Resource = "arn:aws:ssm:${var.aws_region}::parameter/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
       },
+      {
+        Sid      = "ReadGrafanaAdminUserIds"
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter"]
+        Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/grafana/admin-user-ids"
+      },
     ]
   })
 
@@ -401,6 +447,7 @@ resource "aws_iam_policy" "github_actions_deploy_iam" {
           "iam:DeleteRole",
           "iam:DeleteRolePolicy",
           "iam:GetRole",
+          "iam:GetRolePolicy",
           "iam:ListAttachedRolePolicies",
           "iam:ListRolePolicies",
           "iam:PutRolePolicy",
@@ -412,6 +459,15 @@ resource "aws_iam_policy" "github_actions_deploy_iam" {
         Resource = [
           "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-instance-role",
           "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-task-execution-role",
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-grafana-workspace-role",
+        ]
+      },
+      {
+        Sid    = "CreateGrafanaWorkspaceRole"
+        Effect = "Allow"
+        Action = ["iam:CreateRole"]
+        Resource = [
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-grafana-workspace-role",
         ]
       },
       {
@@ -484,12 +540,14 @@ resource "aws_iam_policy" "github_actions_deploy_iam" {
         Resource = [
           "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-instance-role",
           "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-task-execution-role",
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-grafana-workspace-role",
         ]
         Condition = {
           StringEquals = {
             "iam:PassedToService" = [
               "ec2.amazonaws.com",
               "ecs-tasks.amazonaws.com",
+              "grafana.amazonaws.com",
             ]
           }
         }
@@ -505,6 +563,7 @@ resource "aws_iam_policy" "github_actions_deploy_iam" {
               "autoscaling.amazonaws.com",
               "ecs.amazonaws.com",
               "elasticloadbalancing.amazonaws.com",
+              "grafana.amazonaws.com",
             ]
           }
         }

@@ -38,6 +38,18 @@ variable "image_tag" {
   default     = "manual"
 }
 
+variable "grafana_admin_user_ids" {
+  description = "IAM Identity Center user IDs to grant Grafana administrator access."
+  type        = list(string)
+  default     = []
+}
+
+variable "grafana_admin_group_ids" {
+  description = "IAM Identity Center group IDs to grant Grafana administrator access."
+  type        = list(string)
+  default     = []
+}
+
 provider "aws" {
   region = var.aws_region
 }
@@ -587,6 +599,105 @@ resource "aws_cloudwatch_log_group" "api" {
   }
 }
 
+resource "aws_iam_role" "grafana_workspace" {
+  name = "${var.project_name}-grafana-workspace-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "grafana.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+
+  tags = {
+    Project   = var.project_name
+    ManagedBy = "Terraform"
+  }
+}
+
+resource "aws_iam_role_policy" "grafana_cloudwatch_logs" {
+  name = "${var.project_name}-grafana-cloudwatch-logs"
+  role = aws_iam_role.grafana_workspace.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "DiscoverLogGroups"
+        Effect   = "Allow"
+        Action   = ["logs:DescribeLogGroups"]
+        Resource = "*"
+      },
+      {
+        Sid    = "ValidateCloudWatchDataSource"
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:GetMetricData",
+          "cloudwatch:ListMetrics",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid      = "StartQueriesAgainstApiLogGroup"
+        Effect   = "Allow"
+        Action   = ["logs:StartQuery"]
+        Resource = "${aws_cloudwatch_log_group.api.arn}:*"
+      },
+      {
+        Sid    = "ReadAndStopLogInsightsQueries"
+        Effect = "Allow"
+        Action = [
+          "logs:GetQueryResults",
+          "logs:StopQuery",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "ReadApiLogEvents"
+        Effect = "Allow"
+        Action = [
+          "logs:DescribeLogStreams",
+          "logs:FilterLogEvents",
+          "logs:GetLogEvents",
+        ]
+        Resource = "${aws_cloudwatch_log_group.api.arn}:*"
+      },
+    ]
+  })
+}
+
+resource "aws_grafana_workspace" "api" {
+  name                     = "${var.project_name}-monitoring"
+  description              = "CloudWatch Logs dashboard for the Heart Disease API."
+  account_access_type      = "CURRENT_ACCOUNT"
+  authentication_providers = ["AWS_SSO"]
+  permission_type          = "CUSTOMER_MANAGED"
+  role_arn                 = aws_iam_role.grafana_workspace.arn
+  data_sources             = ["CLOUDWATCH"]
+
+  tags = {
+    Project   = var.project_name
+    ManagedBy = "Terraform"
+  }
+
+  depends_on = [
+    aws_iam_role_policy.grafana_cloudwatch_logs,
+  ]
+}
+
+resource "aws_grafana_role_association" "admins" {
+  count = length(var.grafana_admin_user_ids) + length(var.grafana_admin_group_ids) > 0 ? 1 : 0
+
+  workspace_id = aws_grafana_workspace.api.id
+  role         = "ADMIN"
+  user_ids     = var.grafana_admin_user_ids
+  group_ids    = var.grafana_admin_group_ids
+}
+
 resource "aws_launch_template" "container_instance" {
   name_prefix   = "${var.project_name}-"
   image_id      = data.aws_ssm_parameter.ecs_optimized_ami.value
@@ -782,4 +893,19 @@ output "ecs_service_name" {
 
 output "log_group_name" {
   value = aws_cloudwatch_log_group.api.name
+}
+
+output "grafana_workspace_id" {
+  description = "AWS Managed Grafana workspace ID."
+  value       = aws_grafana_workspace.api.id
+}
+
+output "grafana_workspace_endpoint" {
+  description = "AWS Managed Grafana workspace base URL."
+  value       = aws_grafana_workspace.api.endpoint
+}
+
+output "grafana_dashboard_url" {
+  description = "URL of the provisioned API CloudWatch dashboard."
+  value       = "${trimsuffix(aws_grafana_workspace.api.endpoint, "/")}/d/heart-disease-api-cloudwatch/heart-disease-api-cloudwatch?orgId=1"
 }
