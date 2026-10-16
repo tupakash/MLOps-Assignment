@@ -8,7 +8,7 @@ cloudwatch_region="${4:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOIN
 project_name="${5:?Usage: publish-grafana-dashboard.sh WORKSPACE_ID ENDPOINT GRAFANA_REGION CLOUDWATCH_REGION PROJECT_NAME}"
 
 dashboard_file="grafana/dashboards/api-monitoring.json"
-base_url="${workspace_endpoint%/}"
+base_url="https://${workspace_endpoint%/}"
 key_name="dashboard-deploy-${GITHUB_RUN_ID:-manual}-$(date +%s)"
 api_key=""
 response_file="$(mktemp)"
@@ -33,19 +33,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for attempt in {1..30}; do
-    status_code="$(curl --silent --show-error --output /dev/null \
-        --write-out '%{http_code}' "$base_url/api/health")"
-    if [[ "$status_code" == "200" ]]; then
-        break
-    fi
-    if [[ "$attempt" == "30" ]]; then
-        echo "::error::AWS Managed Grafana workspace API did not become ready."
-        exit 1
-    fi
-    sleep 10
-done
-
 api_key="$(aws grafana create-workspace-api-key \
     --workspace-id "$workspace_id" \
     --key-name "$key_name" \
@@ -58,6 +45,21 @@ if [[ -z "$api_key" || "$api_key" == "None" ]]; then
     echo "::error::AWS did not return a temporary Grafana dashboard API key."
     exit 1
 fi
+
+for attempt in {1..30}; do
+    if status_code="$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
+        --output /dev/null \
+        --write-out '%{http_code}' \
+        --header "Authorization: Bearer ${api_key}" \
+        "$base_url/api/datasources")" && [[ "$status_code" == "200" ]]; then
+        break
+    fi
+    if [[ "$attempt" == "30" ]]; then
+        echo "::error::AWS Managed Grafana workspace API did not become ready."
+        exit 1
+    fi
+    sleep 10
+done
 
 datasource_payload="$(jq -n \
     --arg region "$cloudwatch_region" \
