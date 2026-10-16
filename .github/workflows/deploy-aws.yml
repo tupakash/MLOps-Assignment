@@ -37,9 +37,11 @@ jobs:
       id-token: write
     env:
       AWS_REGION: ap-south-1
+      AWS_GRAFANA_REGION: ap-southeast-1
       AWS_DEPLOY_ROLE_ARN: arn:aws:iam::543035741305:role/heart-disease-api-github-actions-deploy
       TF_IN_AUTOMATION: "true"
       TF_VAR_aws_region: ap-south-1
+      TF_VAR_grafana_region: ap-southeast-1
       TF_VAR_project_name: heart-disease-api
       TF_VAR_instance_type: t3.micro
       IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
@@ -165,6 +167,7 @@ jobs:
           bash ./publish-grafana-dashboard.sh \
             "$workspace_id" \
             "$workspace_endpoint" \
+            "$AWS_GRAFANA_REGION" \
             "$AWS_REGION" \
             "heart-disease-api"
           dashboard_url=$(terraform output -raw grafana_dashboard_url)

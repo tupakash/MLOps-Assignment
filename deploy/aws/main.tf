@@ -15,6 +15,12 @@ variable "aws_region" {
   default     = "ap-south-1"
 }
 
+variable "grafana_region" {
+  description = "AWS region for the Managed Grafana workspace."
+  type        = string
+  default     = "ap-southeast-1"
+}
+
 variable "project_name" {
   description = "Prefix used to name AWS resources."
   type        = string
@@ -52,6 +58,11 @@ variable "grafana_admin_group_ids" {
 
 provider "aws" {
   region = var.aws_region
+}
+
+provider "aws" {
+  alias  = "grafana"
+  region = var.grafana_region
 }
 
 data "aws_availability_zones" "available" {
@@ -671,6 +682,7 @@ resource "aws_iam_role_policy" "grafana_cloudwatch_logs" {
 }
 
 resource "aws_grafana_workspace" "api" {
+  provider                 = aws.grafana
   name                     = "${var.project_name}-monitoring"
   description              = "CloudWatch Logs dashboard for the Heart Disease API."
   account_access_type      = "CURRENT_ACCOUNT"
@@ -690,7 +702,8 @@ resource "aws_grafana_workspace" "api" {
 }
 
 resource "aws_grafana_role_association" "admins" {
-  count = length(var.grafana_admin_user_ids) + length(var.grafana_admin_group_ids) > 0 ? 1 : 0
+  provider = aws.grafana
+  count    = length(var.grafana_admin_user_ids) + length(var.grafana_admin_group_ids) > 0 ? 1 : 0
 
   workspace_id = aws_grafana_workspace.api.id
   role         = "ADMIN"
@@ -903,6 +916,11 @@ output "grafana_workspace_id" {
 output "grafana_workspace_endpoint" {
   description = "AWS Managed Grafana workspace base URL."
   value       = aws_grafana_workspace.api.endpoint
+}
+
+output "grafana_workspace_region" {
+  description = "AWS region of the Managed Grafana workspace."
+  value       = var.grafana_region
 }
 
 output "grafana_dashboard_url" {

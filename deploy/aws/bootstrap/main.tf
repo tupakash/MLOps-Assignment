@@ -23,6 +23,12 @@ variable "aws_region" {
   default     = "ap-south-1"
 }
 
+variable "grafana_region" {
+  description = "AWS region for the Managed Grafana workspace."
+  type        = string
+  default     = "ap-southeast-1"
+}
+
 variable "project_name" {
   description = "Prefix used to name AWS resources."
   type        = string
@@ -255,7 +261,7 @@ resource "aws_iam_policy" "github_actions_deploy" {
         Resource = "*"
         Condition = {
           StringEquals = {
-            "aws:RequestedRegion" = var.aws_region
+            "aws:RequestedRegion" = var.grafana_region
           }
         }
       },
