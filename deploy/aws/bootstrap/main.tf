@@ -361,6 +361,17 @@ resource "aws_iam_policy" "github_actions_deploy_services" {
         }
       },
       {
+        Sid      = "ReadIdentityCenterRegisteredRegions"
+        Effect   = "Allow"
+        Action   = ["sso:DescribeRegisteredRegions"]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestedRegion" = var.aws_region
+          }
+        }
+      },
+      {
         Sid    = "ManageApiGateway"
         Effect = "Allow"
         Action = ["apigateway:*"]
