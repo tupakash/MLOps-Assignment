@@ -384,6 +384,17 @@ resource "aws_iam_policy" "github_actions_deploy_services" {
         }
       },
       {
+        Sid      = "DeleteGrafanaIdentityCenterApplication"
+        Effect   = "Allow"
+        Action   = ["sso:DeleteManagedApplicationInstance"]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestedRegion" = var.aws_region
+          }
+        }
+      },
+      {
         Sid    = "ManageApiGateway"
         Effect = "Allow"
         Action = ["apigateway:*"]
