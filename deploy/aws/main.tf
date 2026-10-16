@@ -908,6 +908,11 @@ output "log_group_name" {
   value = aws_cloudwatch_log_group.api.name
 }
 
+output "api_log_group_arn" {
+  description = "ARN of the API CloudWatch log group used by Grafana."
+  value       = "${aws_cloudwatch_log_group.api.arn}:*"
+}
+
 output "grafana_workspace_id" {
   description = "AWS Managed Grafana workspace ID."
   value       = aws_grafana_workspace.api.id
@@ -925,5 +930,5 @@ output "grafana_workspace_region" {
 
 output "grafana_dashboard_url" {
   description = "URL of the provisioned API CloudWatch dashboard."
-  value       = "https://${trimsuffix(aws_grafana_workspace.api.endpoint, "/")}/d/heart-disease-api-cloudwatch/heart-disease-api-cloudwatch?orgId=1"
+  value       = "https://${trimsuffix(aws_grafana_workspace.api.endpoint, "/")}/d/heart-disease-api-cloudwatch/heart-disease-api-cloudwatch-monitoring?orgId=1"
 }

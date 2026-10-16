@@ -164,12 +164,14 @@ jobs:
         run: |
           workspace_id=$(terraform output -raw grafana_workspace_id)
           workspace_endpoint=$(terraform output -raw grafana_workspace_endpoint)
+          log_group_arn=$(terraform output -raw api_log_group_arn)
           bash ./publish-grafana-dashboard.sh \
             "$workspace_id" \
             "$workspace_endpoint" \
             "$AWS_GRAFANA_REGION" \
             "$AWS_REGION" \
-            "heart-disease-api"
+            "heart-disease-api" \
+            "$log_group_arn"
           dashboard_url=$(terraform output -raw grafana_dashboard_url)
           {
             echo "### AWS Managed Grafana"
