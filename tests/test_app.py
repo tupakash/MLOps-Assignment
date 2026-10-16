@@ -94,9 +94,3 @@ def test_api_requests_are_logged_as_structured_events(caplog):
     assert request_events[0]["path"] == "/health"
     assert request_events[0]["status_code"] == 200
     assert request_events[0]["duration_ms"] >= 0
-
-    metrics = app_module.metrics()
-    metrics_text = metrics.body.decode()
-    assert '# TYPE http_requests_total counter' in metrics_text
-    assert '{method="GET",path="/health",status_code="200"}' in metrics_text
-    assert '# TYPE http_request_duration_seconds histogram' in metrics_text

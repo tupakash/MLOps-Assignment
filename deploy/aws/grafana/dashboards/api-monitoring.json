@@ -68,7 +68,7 @@
           ],
           "queryMode": "Logs",
           "refId": "A",
-          "region": "default"
+          "region": "ap-south-1"
         }
       ],
       "title": "API requests per minute",
@@ -121,7 +121,7 @@
           ],
           "queryMode": "Logs",
           "refId": "A",
-          "region": "default"
+          "region": "ap-south-1"
         }
       ],
       "title": "HTTP errors per minute",
@@ -174,7 +174,7 @@
           ],
           "queryMode": "Logs",
           "refId": "A",
-          "region": "default"
+          "region": "ap-south-1"
         }
       ],
       "title": "P95 API latency",
@@ -210,7 +210,7 @@
           ],
           "queryMode": "Logs",
           "refId": "A",
-          "region": "default"
+          "region": "ap-south-1"
         }
       ],
       "title": "Recent API requests",

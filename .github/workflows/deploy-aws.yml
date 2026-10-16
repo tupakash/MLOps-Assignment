@@ -63,6 +63,20 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: github-actions-${{ github.run_id }}
 
+      - name: Load the Grafana workspace administrator assignment
+        if: env.OPERATION == 'deploy'
+        run: |
+          admin_user_ids=$(aws ssm get-parameter \
+            --name "/${TF_VAR_project_name}/grafana/admin-user-ids" \
+            --query Parameter.Value \
+            --output text)
+          if ! jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and length > 0)' \
+            <<< "$admin_user_ids" >/dev/null; then
+            echo "::error::The Grafana administrator assignment is missing or invalid in Parameter Store."
+            exit 1
+          fi
+          echo "TF_VAR_grafana_admin_user_ids=${admin_user_ids}" >> "$GITHUB_ENV"
+
       - name: Initialize shared Terraform state
         working-directory: deploy/aws
         run: terraform init -input=false
@@ -141,6 +155,24 @@ jobs:
         if: env.OPERATION == 'deploy'
         working-directory: deploy/aws
         run: terraform apply -input=false -auto-approve -var="image_tag=${IMAGE_TAG}"
+
+      - name: Publish the CloudWatch dashboard to AWS Managed Grafana
+        if: env.OPERATION == 'deploy'
+        working-directory: deploy/aws
+        run: |
+          workspace_id=$(terraform output -raw grafana_workspace_id)
+          workspace_endpoint=$(terraform output -raw grafana_workspace_endpoint)
+          bash ./publish-grafana-dashboard.sh \
+            "$workspace_id" \
+            "$workspace_endpoint" \
+            "$AWS_REGION" \
+            "heart-disease-api"
+          dashboard_url=$(terraform output -raw grafana_dashboard_url)
+          {
+            echo "### AWS Managed Grafana"
+            echo
+            echo "Dashboard URL: ${dashboard_url}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke-test the deployed API
         if: env.OPERATION == 'deploy'

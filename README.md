@@ -36,11 +36,8 @@ This is an academic machine-learning project, not a medical diagnostic tool.
 - **AWS infrastructure and monitoring:** Terraform describes a public API
   Gateway protected by AWS WAF, connected through a VPC Link to an internal
   load balancer and private ECS-on-EC2 service. CloudWatch collects structured
-  API request logs, and a provisioned Grafana dashboard visualizes request
-  volume, errors, latency, and recent events.
-- **Local metrics monitoring:** The API exposes Prometheus request-count and
-  latency metrics at `/metrics`. A Docker Compose stack runs Prometheus and
-  Grafana and provisions an API dashboard automatically.
+  API request logs, which AWS Managed Grafana visualizes as request volume,
+  HTTP errors, latency, and recent events.
 
 ## Prediction API
 
@@ -74,8 +71,7 @@ curl -X POST http://localhost:8000/predict \
 | `tests/` | API and model-pipeline tests |
 | `.github/workflows/ci.yml` | Lint, test, train, container build, and API smoke test |
 | `.github/workflows/deploy-aws.yml` | OIDC-authenticated AWS deployment and teardown |
-| `deploy/aws/` | Terraform infrastructure, deployment script, and CloudWatch Grafana configuration |
-| `deploy/monitoring/` | Prometheus scrape configuration and provisioned Grafana dashboard |
+| `deploy/aws/` | Terraform infrastructure, deployment scripts, and Grafana dashboard |
 | `deploy/aws/bootstrap/` | Separately managed GitHub OIDC provider and deployment role |
 | `requirements.txt` | Training, notebook, tracking, and development dependencies |
 | `requirements-serving.txt` | Minimal API runtime dependencies |
@@ -111,15 +107,24 @@ Once running, the API health endpoint is available at
 `http://localhost:8000/health`; the interactive API documentation is at
 `http://localhost:8000/docs`.
 
-## Prometheus and Grafana monitoring
+## AWS Managed Grafana monitoring
 
-The API exposes request-count and latency metrics at `/metrics`. The
-`docker-compose.monitoring.yml` stack runs the API, Prometheus, and Grafana;
-Prometheus scrape configuration and the provisioned dashboard are in
-`deploy/monitoring/`. The dashboard presents API request rate, HTTP error rate,
-p95 latency, and API availability. Compose binds service ports to loopback by
-default. A separately provisioned AWS Grafana dashboard in `deploy/aws/`
-visualizes API request logs from CloudWatch.
+Terraform provisions an AWS Managed Grafana workspace with the CloudWatch
+data source. GitHub Actions publishes the CloudWatch Logs dashboard after the
+workspace is ready. The dashboard queries the API log group for request rate,
+HTTP errors, p95 request latency, and recent request events. It uses the
+workspace IAM role to read CloudWatch and does not require Prometheus for this
+log-based monitoring setup.
+
+Before the first deployment with Managed Grafana, put the IAM Identity Center
+administrator user ID in the ignored
+`deploy/aws/bootstrap/terraform.tfvars` file as
+`grafana_admin_user_ids = ["<identity-center-user-id>"]`, then apply
+`deploy/aws/bootstrap/` with an authorized AWS session. Bootstrap stores this
+assignment in account-local Parameter Store and updates the GitHub deployment
+role to read only that parameter. The workflow uses it to grant the user
+workspace administrator access. It prints the dashboard URL only after it
+imports the dashboard and successfully checks CloudWatch Logs query access.
 
 ## AWS deployment and monitoring
 
@@ -143,8 +148,7 @@ application resources while retaining the separate bootstrap role and shared
 state bucket so a later workflow can deploy again. The state bucket and its
 versions should be retained to preserve recovery history.
 
-The Grafana dashboard in `deploy/aws/` queries the CloudWatch API log group for
-request volume, HTTP errors, p95 latency, and recent request events. It is
-separate from the Prometheus-based Compose monitoring stack. AWS infrastructure
-incurs charges while running; review and remove the deployed resources when
-they are no longer needed.
+The AWS Managed Grafana workspace and dashboard are provisioned with the
+application. AWS resources, including the managed workspace, may incur charges
+while running; review and remove deployed resources when they are no longer
+needed.

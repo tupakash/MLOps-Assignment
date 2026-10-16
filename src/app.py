@@ -10,35 +10,13 @@ from time import perf_counter
 import numpy as np
 import onnxruntime as ort
 from fastapi import FastAPI, Request
-from prometheus_client import (
-    CONTENT_TYPE_LATEST,
-    CollectorRegistry,
-    Counter,
-    Histogram,
-    generate_latest,
-)
 from pydantic import BaseModel
-from starlette.responses import Response
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODEL_PATH = PROJECT_ROOT / "artifacts" / "heart_disease_model.onnx"
 
 request_logger = logging.getLogger("api.requests")
 model_session: ort.InferenceSession | None = None
-metrics_registry = CollectorRegistry()
-http_requests_total = Counter(
-    "http_requests_total",
-    "Total number of HTTP requests.",
-    ("method", "path", "status_code"),
-    registry=metrics_registry,
-)
-http_request_duration_seconds = Histogram(
-    "http_request_duration_seconds",
-    "HTTP request duration in seconds.",
-    ("method", "path"),
-    registry=metrics_registry,
-)
-METRIC_PATHS = frozenset({"/health", "/predict", "/metrics"})
 
 
 class PatientRecord(BaseModel):
@@ -84,21 +62,6 @@ async def log_api_request(request: Request, call_next):
         return response
     finally:
         duration_seconds = perf_counter() - started_at
-        if request.url.path != "/metrics":
-            metric_path = (
-                request.url.path
-                if request.url.path in METRIC_PATHS
-                else "unmatched"
-            )
-            http_requests_total.labels(
-                method=request.method,
-                path=metric_path,
-                status_code=str(status_code),
-            ).inc()
-            http_request_duration_seconds.labels(
-                method=request.method,
-                path=metric_path,
-            ).observe(duration_seconds)
         request_logger.info(
             json.dumps(
                 {
@@ -111,14 +74,6 @@ async def log_api_request(request: Request, call_next):
                 separators=(",", ":"),
             )
         )
-
-
-@app.get("/metrics", include_in_schema=False)
-def metrics() -> Response:
-    return Response(
-        generate_latest(metrics_registry),
-        headers={"Content-Type": CONTENT_TYPE_LATEST},
-    )
 
 
 @app.get("/health")
