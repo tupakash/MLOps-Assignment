@@ -388,6 +388,15 @@ resource "aws_iam_policy" "github_actions_deploy_services" {
         Resource = "*"
       },
       {
+        Sid    = "ManageGrafanaIdentityCenterProfileAssociations"
+        Effect = "Allow"
+        Action = [
+          "sso:AssociateProfile",
+          "sso:DisassociateProfile",
+        ]
+        Resource = "*"
+      },
+      {
         Sid      = "CreateGrafanaIdentityCenterApplication"
         Effect   = "Allow"
         Action   = ["sso:CreateManagedApplicationInstance"]
