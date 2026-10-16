@@ -925,5 +925,5 @@ output "grafana_workspace_region" {
 
 output "grafana_dashboard_url" {
   description = "URL of the provisioned API CloudWatch dashboard."
-  value       = "${trimsuffix(aws_grafana_workspace.api.endpoint, "/")}/d/heart-disease-api-cloudwatch/heart-disease-api-cloudwatch?orgId=1"
+  value       = "https://${trimsuffix(aws_grafana_workspace.api.endpoint, "/")}/d/heart-disease-api-cloudwatch/heart-disease-api-cloudwatch?orgId=1"
 }
