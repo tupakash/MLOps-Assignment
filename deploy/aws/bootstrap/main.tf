@@ -367,7 +367,7 @@ resource "aws_iam_policy" "github_actions_deploy_services" {
         Resource = "*"
         Condition = {
           StringEquals = {
-            "aws:RequestedRegion" = var.aws_region
+            "aws:RequestedRegion" = var.grafana_region
           }
         }
       },
