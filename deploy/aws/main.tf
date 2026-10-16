@@ -683,8 +683,8 @@ resource "aws_iam_role_policy" "grafana_cloudwatch_logs" {
 
 resource "aws_grafana_workspace" "api" {
   provider                 = aws.grafana
-  name                     = "${var.project_name}-monitoring"
-  description              = "CloudWatch Logs dashboard for the Heart Disease API."
+  name                     = "${var.project_name}-monitoring-sg"
+  description              = "CloudWatch Logs dashboard for the Heart Disease API in Singapore."
   account_access_type      = "CURRENT_ACCOUNT"
   authentication_providers = ["AWS_SSO"]
   permission_type          = "CUSTOMER_MANAGED"
