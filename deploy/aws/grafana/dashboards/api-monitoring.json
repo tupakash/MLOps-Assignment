@@ -59,7 +59,7 @@
             "type": "cloudwatch",
             "uid": "cloudwatch"
           },
-          "expression": "fields @timestamp, event\n| filter event = \"api_request\"\n| stats count(*) as requests by bin(1m)",
+          "expression": "fields @timestamp, event\n| filter event like /api_request/\n| stats count(*) as requests by bin(1m)",
           "id": "",
           "logGroups": [
             {
@@ -112,7 +112,7 @@
             "type": "cloudwatch",
             "uid": "cloudwatch"
           },
-          "expression": "fields @timestamp, event, status_code\n| filter event = \"api_request\" and status_code >= 400\n| stats count(*) as errors by bin(1m), status_code",
+          "expression": "fields @timestamp, event, status_code\n| filter event like /api_request/\n| stats sum(if(status_code >= 400, 1, 0)) as errors by bin(1m)",
           "id": "",
           "logGroups": [
             {
@@ -165,7 +165,7 @@
             "type": "cloudwatch",
             "uid": "cloudwatch"
           },
-          "expression": "fields @timestamp, event, duration_ms\n| filter event = \"api_request\"\n| stats pct(duration_ms, 95) as p95_ms by bin(1m)",
+          "expression": "fields @timestamp, event, duration_ms\n| filter event like /api_request/\n| stats pct(duration_ms, 95) as p95_ms by bin(1m)",
           "id": "",
           "logGroups": [
             {
@@ -201,7 +201,7 @@
             "type": "cloudwatch",
             "uid": "cloudwatch"
           },
-          "expression": "fields @timestamp, method, path, status_code, duration_ms\n| filter event = \"api_request\"\n| sort @timestamp desc\n| limit 100",
+          "expression": "fields @timestamp, method, path, status_code, duration_ms\n| filter event like /api_request/\n| sort @timestamp desc\n| limit 100",
           "id": "",
           "logGroups": [
             {
