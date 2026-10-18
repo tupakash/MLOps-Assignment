@@ -1,5 +1,6 @@
 import asyncio
 import json
+from io import StringIO
 
 import numpy as np
 import pytest
@@ -59,7 +60,7 @@ def test_health_endpoint_returns_ok(monkeypatch):
     assert app_module.health_check() == {"status": "ok"}
 
 
-def test_api_requests_are_logged_as_structured_events(caplog):
+def test_api_requests_are_logged_as_structured_events():
     scope = {
         "type": "http",
         "asgi": {"version": "3.0"},
@@ -79,15 +80,17 @@ def test_api_requests_are_logged_as_structured_events(caplog):
     async def call_next(_request):
         return Response(status_code=200)
 
-    with caplog.at_level("INFO", logger="api.requests"):
+    handler = app_module.request_logger.handlers[0]
+    original_stream = handler.stream
+    stream = StringIO()
+    handler.setStream(stream)
+    try:
         response = asyncio.run(app_module.log_api_request(request, call_next))
+    finally:
+        handler.setStream(original_stream)
 
     assert response.status_code == 200
-    request_events = [
-        json.loads(record.message)
-        for record in caplog.records
-        if record.name == "api.requests"
-    ]
+    request_events = [json.loads(line) for line in stream.getvalue().splitlines()]
     assert len(request_events) == 1
     assert request_events[0]["event"] == "api_request"
     assert request_events[0]["method"] == "GET"

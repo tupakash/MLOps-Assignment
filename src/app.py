@@ -16,6 +16,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODEL_PATH = PROJECT_ROOT / "artifacts" / "heart_disease_model.onnx"
 
 request_logger = logging.getLogger("api.requests")
+request_logger.setLevel(logging.INFO)
+request_logger.propagate = False
+if not request_logger.handlers:
+    request_handler = logging.StreamHandler()
+    request_handler.setFormatter(logging.Formatter("%(message)s"))
+    request_logger.addHandler(request_handler)
 model_session: ort.InferenceSession | None = None
 
 
