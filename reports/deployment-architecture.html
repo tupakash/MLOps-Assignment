@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MLOps Deployment Architecture</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #fff;
+      font-family: Arial, sans-serif;
+    }
+
+    .diagram {
+      overflow-x: auto;
+    }
+
+    .mermaid {
+      min-width: 820px;
+      text-align: center;
+    }
+
+    @media print {
+      body {
+        padding: 0;
+      }
+
+      .mermaid {
+        min-width: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart LR
+    Dev["Developer"] --> Repo["GitHub repository"]
+
+    subgraph Delivery["GitHub Actions delivery"]
+        CI["MLOps CI<br/>Ruff · pytest · train · Docker smoke test"]
+        Deploy["AWS deployment workflow<br/>after successful main CI"]
+        OIDC["GitHub OIDC<br/>assume AWS deployment role"]
+        Build["Train/export ONNX<br/>build Linux image"]
+        ECR[("Amazon ECR<br/>container image")]
+        TF["Terraform<br/>provision/update AWS"]
+        CI --> Deploy --> OIDC --> Build --> ECR
+        OIDC --> TF
+    end
+
+    Repo --> CI
+    ECR -. "pull selected image" .-> Task
+
+    subgraph AWS["AWS runtime · ap-south-1 (Mumbai)"]
+        User["API client"]
+        WAF["AWS WAF"]
+        APIGW["Public API Gateway"]
+        Link["VPC Link"]
+        subgraph VPC["Private VPC · no public application ingress"]
+            ALB["Internal Application Load Balancer"]
+            ECS["Amazon ECS service"]
+            EC2["Private EC2 container instance"]
+            Task["FastAPI container<br/>ONNX Runtime · /health · /predict"]
+            ALB --> ECS --> EC2 --> Task
+        end
+        User --> WAF --> APIGW --> Link --> ALB
+        Task --> CW[("CloudWatch Logs<br/>structured API request events")]
+        Endpoints["Private VPC endpoints<br/>ECR · ECS · CloudWatch Logs · S3"]
+        EC2 -. "private AWS service access" .-> Endpoints
+    end
+
+    subgraph Monitoring["Monitoring · ap-southeast-1 (Singapore)"]
+        Grafana["AWS Managed Grafana<br/>request volume · HTTP errors<br/>p95 latency · recent events"]
+    end
+    CW -. "cross-region Logs Insights queries" .-> Grafana
+
+    classDef delivery fill:#eaf2fb,stroke:#3977a8,color:#173c5a
+    classDef runtime fill:#eaf6f2,stroke:#348a70,color:#184a3c
+    classDef monitor fill:#f2ecfa,stroke:#8061a9,color:#402a65
+    class CI,Deploy,OIDC,Build,ECR,TF delivery
+    class User,WAF,APIGW,Link,ALB,ECS,EC2,Task,CW,Endpoints runtime
+    class Grafana monitor
+    </pre>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "neutral" });
+    mermaid.run({ nodes: [document.querySelector(".mermaid")] }).catch((error) => {
+      console.error("Could not render the Mermaid architecture diagram.", error);
+    });
+  </script>
+</body>
+</html>
